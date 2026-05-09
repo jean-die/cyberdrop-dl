@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
 from cyclopts import Parameter
-from pydantic import BaseModel, ByteSize, Field, NonNegativeInt, PrivateAttr, field_validator
+from pydantic import BaseModel, ByteSize, Field, NonNegativeInt, PositiveFloat, PrivateAttr, field_validator
 
 from cyberdrop_dl.constants import (
     DEFAULT_APP_STORAGE,
@@ -75,9 +75,14 @@ class Files(SettingsGroup):
     )
     dump_json: Annotated[bool, Parameter(alias="-j")] = Field(default=False, validation_alias="j")
     input_file: Annotated[Path, Parameter(alias="-i")] = Field(default=Path("URLs.txt"), validation_alias="i")
+    progress_events: bool = False
+    progress_event_interval: PositiveFloat = 0.25
+    progress_event_bytes: NonNegativeInt = 262144
     save_pages_html: bool = False
     dump_responses: bool = False
     """Save text/HTML/JSON responses to disk (flaresolverr responses are excluded)"""
+    scrape_events: bool = False
+    scrape_event_interval: PositiveFloat = 0.1
 
 
 class Logs(SettingsGroup):  # noqa: PLW1641

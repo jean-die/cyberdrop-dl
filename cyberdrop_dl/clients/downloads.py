@@ -11,6 +11,7 @@ from cyberdrop_dl import aio, constants, ffmpeg, storage
 from cyberdrop_dl.clients import etag
 from cyberdrop_dl.constants import FileExt
 from cyberdrop_dl.exceptions import DownloadError, InvalidContentTypeError, SlowDownloadError
+from cyberdrop_dl.progress import chain_hooks
 from cyberdrop_dl.utils import dates
 
 if TYPE_CHECKING:
@@ -140,6 +141,16 @@ class DownloadClient:
                 size,
                 url=media_item.url,
             )
+            files_settings = self.manager.config.settings.files
+            if files_settings.progress_events:
+                writer_hook = self.manager.logs.make_progress_writer(
+                    url=str(media_item.url),
+                    filename=media_item.filename,
+                    total=size,
+                    interval=files_settings.progress_event_interval,
+                    min_bytes=files_settings.progress_event_bytes,
+                )
+                hook = chain_hooks(hook, writer_hook)
 
         if resume_point:
             hook.advance(resume_point)
