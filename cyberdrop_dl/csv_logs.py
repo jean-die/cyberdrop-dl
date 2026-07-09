@@ -4,12 +4,14 @@ import asyncio
 import csv
 import dataclasses
 import logging
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 
 from cyberdrop_dl import constants
 from cyberdrop_dl.filepath import sanitize_filename
+from cyberdrop_dl.progress import ProgressHook
 from cyberdrop_dl.utils import json
 
 if TYPE_CHECKING:
@@ -35,9 +37,13 @@ class CSVFiles:
     scrape_errors: Path
     last_forum_post: Path
     jsonl_file: Path
+    progress_events_file: Path | None = None
+    scrape_events_file: Path | None = None
 
     def __iter__(self) -> Iterator[Path]:
-        return iter(dataclasses.astuple(self))
+        for value in dataclasses.astuple(self):
+            if isinstance(value, Path):
+                yield value
 
 
 @dataclasses.dataclass(slots=True)
@@ -57,6 +63,7 @@ class CSVLogsManager:
     @classmethod
     def from_config(cls, config: Config) -> Self:
         files = config.logs.files
+        main_log = files.main
         return cls(
             CSVFiles(
                 unsupported_urls=files.unsupported,
@@ -64,6 +71,8 @@ class CSVLogsManager:
                 scrape_errors=files.scrape_errors,
                 jsonl_file=files.jsonl_file,
                 last_forum_post=files.last_forum_post,
+                progress_events_file=main_log.with_suffix(".progress.jsonl") if config.progress_events else None,
+                scrape_events_file=main_log.with_suffix(".scrape.jsonl") if config.scrape_events else None,
             )
         )
 
@@ -83,6 +92,64 @@ class CSVLogsManager:
     async def write_jsonl(self, data: Iterable[dict[str, Any]]) -> None:
         async with self._file_locks[self.files.jsonl_file]:
             await asyncio.to_thread(json.dump_jsonl, data, self.files.jsonl_file)
+
+    def write_progress_event(self, event: dict[str, Any]) -> None:
+        if (path := self.files.progress_events_file) is None:
+            return
+        _ = self.task_group.create_task(self._append_jsonl(path, event))
+
+    def write_scrape_event(self, event: dict[str, Any]) -> None:
+        if (path := self.files.scrape_events_file) is None:
+            return
+        _ = self.task_group.create_task(self._append_jsonl(path, event))
+
+    async def _append_jsonl(self, path: Path, event: dict[str, Any]) -> None:
+        async with self._file_locks[path]:
+            await asyncio.to_thread(_ensure_parent, path)
+            await asyncio.to_thread(json.dump_jsonl, (event,), path)
+
+    def make_progress_writer(
+        self,
+        *,
+        url: str,
+        filename: str,
+        total: int | None,
+        interval: float,
+        min_bytes: int,
+    ) -> ProgressHook:
+        cumulative = 0
+        started = False
+        last_emit_ts = time.monotonic()
+        last_emit_bytes = 0
+
+        def emit_start() -> None:
+            nonlocal started
+            self.write_progress_event(
+                {"event": "start", "ts": time.time(), "url": url, "filename": filename, "total": total},
+            )
+            started = True
+
+        def advance(amount: int = 1) -> None:
+            nonlocal cumulative, last_emit_ts, last_emit_bytes
+            if not started:
+                emit_start()
+            cumulative += amount
+            now = time.monotonic()
+            if (now - last_emit_ts) >= interval and (cumulative - last_emit_bytes) >= min_bytes:
+                self.write_progress_event(
+                    {"event": "chunk", "ts": time.time(), "url": url, "bytes": cumulative},
+                )
+                last_emit_ts = now
+                last_emit_bytes = cumulative
+
+        def done() -> None:
+            if not started:
+                emit_start()
+            self.write_progress_event(
+                {"event": "finish", "ts": time.time(), "url": url, "bytes": cumulative, "ok": True},
+            )
+
+        return ProgressHook(advance, _zero_speed, done)
 
     async def _write_to_csv(self, file: Path, **row: object) -> None:
         async with self._file_locks[file]:
@@ -160,6 +227,14 @@ def _write_resp_to_disk(
         logger.warning(f"Unable to write response from {url} to disk ({e!r})")
     else:
         logger.debug(f"Saved response from {url} to '{file}'")
+
+
+def _ensure_parent(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _zero_speed() -> float:
+    return 0.0
 
 
 def _prepare_resp_file(folder: Path, url: AbsoluteHttpURL, created_at: datetime.datetime, ext: str = ".html") -> Path:

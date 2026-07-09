@@ -15,6 +15,7 @@ from cyberdrop_dl.clients.http import JSON_CHECK, check_http_status
 from cyberdrop_dl.constants import FileExt, HashMode
 from cyberdrop_dl.exceptions import DownloadError, InvalidContentTypeError, SlowDownloadError
 from cyberdrop_dl.hasher import compute_in_place_hash
+from cyberdrop_dl.progress import chain_hooks
 from cyberdrop_dl.signature import simple_repr
 from cyberdrop_dl.utils import dates, enter_context
 
@@ -133,12 +134,22 @@ class DownloadClient:
             return self.manager.scrape_mapper.tui.downloads.download_hls_seg()
 
         size = (media_item.size + resume_point) if media_item.size is not None else None
-        return self.manager.scrape_mapper.tui.downloads.download_file(
+        hook = self.manager.scrape_mapper.tui.downloads.download_file(
             media_item.filename,
             media_item.domain,
             size,
             url=media_item.url,
         )
+        if self.config.progress_events:
+            writer_hook = self.manager.logs.make_progress_writer(
+                url=str(media_item.url),
+                filename=media_item.filename,
+                total=size,
+                interval=self.config.progress_event_interval,
+                min_bytes=self.config.progress_event_bytes,
+            )
+            hook = chain_hooks(hook, writer_hook)
+        return hook
 
     async def _append_content(self, media_item: MediaItem, hook: ProgressHook, resp: AbstractResponse[Any]) -> None:
         check_free_space = storage.create_free_space_checker(media_item)

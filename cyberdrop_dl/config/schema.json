@@ -1217,6 +1217,34 @@
     "notifications": {
       "$ref": "#/$defs/Notifications"
     },
+    "progress_event_bytes": {
+      "default": 262144,
+      "minimum": 0,
+      "title": "Progress Event Bytes",
+      "type": "integer"
+    },
+    "progress_event_interval": {
+      "default": 0.25,
+      "exclusiveMinimum": 0,
+      "title": "Progress Event Interval",
+      "type": "number"
+    },
+    "progress_events": {
+      "default": false,
+      "title": "Progress Events",
+      "type": "boolean"
+    },
+    "scrape_event_interval": {
+      "default": 0.1,
+      "exclusiveMinimum": 0,
+      "title": "Scrape Event Interval",
+      "type": "number"
+    },
+    "scrape_events": {
+      "default": false,
+      "title": "Scrape Events",
+      "type": "boolean"
+    },
     "sort": {
       "$ref": "#/$defs/Sort"
     },

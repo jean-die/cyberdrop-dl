@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import dataclasses
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self, override
+from typing import TYPE_CHECKING, Any, Literal, Self, override
 
 from cyberdrop_dl import aio, env, filepath, storage
 from cyberdrop_dl.constants import BlockedDomains
@@ -42,6 +43,10 @@ logger = logging.getLogger(__name__)
 
 def _filter_by_domain(url: AbsoluteHttpURL, domains: Iterable[str]) -> bool:
     return any(domain in url.host for domain in domains)
+
+
+def _scrape_event(event: str, stats: dict[str, int]) -> dict[str, Any]:
+    return {"event": event, "ts": time.time(), **stats}
 
 
 @dataclasses.dataclass(slots=True, eq=False)
@@ -182,6 +187,10 @@ class ScrapeMapper:
                 self.task_mngr.downloads,
                 self.task_mngr.scrape,
             ):
+                if config.scrape_events:
+                    _ = self.manager.logs.task_group.create_task(
+                        self._poll_scrape_stats(config.scrape_event_interval),
+                    )
                 self.manager.scrape_mapper = self
                 yield self
 
@@ -281,6 +290,25 @@ class ScrapeMapper:
             self.tui.files.stats.skipped += 1
             return False
         return True
+
+    async def _poll_scrape_stats(self, interval: float) -> None:
+        # Runs on logs.task_group, which outlives the scrape group, so the final
+        # write still has an open task group to schedule on.
+        done = self.task_mngr.scrape.done
+        last: dict[str, int] | None = None
+        while True:
+            with contextlib.suppress(TimeoutError):
+                _ = await asyncio.wait_for(done.wait(), timeout=interval)
+            if done.is_set():
+                self.manager.logs.write_scrape_event(
+                    _scrape_event("scrape_complete", dataclasses.asdict(self.tui.files.stats)),
+                )
+                return
+            self._download_queue()  # refresh stats.queued (normally driven by Rich)
+            current = dataclasses.asdict(self.tui.files.stats)
+            if current != last:
+                self.manager.logs.write_scrape_event(_scrape_event("stats", current))
+                last = current
 
 
 def get_crawlers_mapping() -> dict[str, type[Crawler]]:

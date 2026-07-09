@@ -140,6 +140,11 @@ network:
 notifications:
   apprise: []
   webhook: null
+progress_event_bytes: 262144
+progress_event_interval: 0.25
+progress_events: false
+scrape_event_interval: 0.1
+scrape_events: false
 sort:
   enabled: false
   formats:

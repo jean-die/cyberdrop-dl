@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, final
 import yaml
 from cyclopts import App, Parameter
 from cyclopts.bind import normalize_tokens
-from pydantic import AfterValidator, BaseModel, Field, NonNegativeInt, PositiveInt
+from pydantic import AfterValidator, BaseModel, Field, NonNegativeInt, PositiveFloat, PositiveInt
 
 from cyberdrop_dl.config.appdata import AppData
 from cyberdrop_dl.constants import DEFAULT_PARAMETER
@@ -102,6 +102,21 @@ class Config(ConfigModel, title="cyberdrop-dl config"):
 
     network: Network = Field(default_factory=Network)
     notifications: Notifications = Field(default_factory=Notifications)
+
+    progress_event_bytes: NonNegativeInt = 262144
+    "Minimum number of new bytes between throttled progress `chunk` events"
+
+    progress_event_interval: PositiveFloat = 0.25
+    "Minimum number of seconds between throttled progress `chunk` events"
+
+    progress_events: bool = False
+    "Emit per-file lifecycle events to `<main_log>.progress.jsonl` (for use with `--ui disabled`)"
+
+    scrape_event_interval: PositiveFloat = 0.1
+    "Minimum number of seconds between scrape stats snapshots"
+
+    scrape_events: bool = False
+    "Emit scrape stats snapshots to `<main_log>.scrape.jsonl` (for use with `--ui disabled`)"
 
     sort: Sort = Field(default_factory=Sort)
     subfolders: SubFolders = Field(default_factory=SubFolders)
