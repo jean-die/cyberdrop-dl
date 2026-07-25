@@ -63,9 +63,16 @@ def main_menu(
 
 
 @app.command
-def show() -> None:
+def show(
+    *,
+    json: Annotated[bool, Parameter(help="Output the list as machine-readable JSON")] = False,
+) -> None:
     """Show a list of all supported sites"""
     from cyberdrop_dl.commands import supported_sites
+
+    if json:
+        print(supported_sites.as_json())
+        return
 
     table = supported_sites.as_rich_table()
     app.console.print(table)

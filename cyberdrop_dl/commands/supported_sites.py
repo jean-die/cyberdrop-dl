@@ -19,6 +19,23 @@ def _gen_crawlers_info() -> list[CrawlerInfo]:
     return sorted(infos, key=lambda x: x.site.casefold())
 
 
+def as_json() -> str:
+    import json
+
+    from cyberdrop_dl import __version__
+    from cyberdrop_dl.crawlers import Registry
+
+    sites = [
+        {
+            "site": crawler.INFO.site,
+            "primary_url": str(crawler.INFO.primary_url).rstrip("/"),
+            "domains": list(crawler.SCRAPE_MAPPER_KEYS),
+        }
+        for crawler in sorted(Registry.get_crawlers(), key=lambda c: c.INFO.site.casefold())
+    ]
+    return json.dumps({"version": __version__, "sites": sites}, ensure_ascii=False)
+
+
 def as_rich_table() -> Table:
     table = Table(
         title=Text("cyberdrop-dl supported sites", style="green"),
